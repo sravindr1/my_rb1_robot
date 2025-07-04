@@ -25,9 +25,7 @@ class Service_to_Rotate:
         self.cmd_msg = Twist()
         self.cmd_msg.linear.x = 0
 
-        
-
-        rospy.loginfo("rotate_robot service ready")
+        rospy.loginfo("Service Ready")
         rospy.spin()
 
     def check_odom_values(self, msg):
@@ -37,20 +35,26 @@ class Service_to_Rotate:
         (_,_,self.current_robot_yaw) = tf.transformations.euler_from_quaternion(q)
     
     def rotate_robot(self, request):
-        rate = rospy.Rate(10)
-        rospy.loginfo("Calculating difference angle")
+        rate = rospy.Rate(20)
+        rospy.loginfo("Service Requested")
         #rotate if difference in requested angle and current angle is > threshold = 1 degrees 
-        threshold = math.radians(1)
+        
         
         target_yaw = self.current_robot_yaw + request.degrees *math.pi/180
         difference_angle = self.normalize_angle( target_yaw - self.current_robot_yaw)
         rospy.loginfo("Difference angle %2f ", difference_angle)
-        max_speed = 0.3
-        
+        max_speed = 0.7
+        gain = 0.9
+        min_speed = 0.05
+        threshold = math.radians(0.5)
 
         while(abs(difference_angle)>threshold and not rospy.is_shutdown()): 
-            self.cmd_msg.angular.z = max(-max_speed, min(max_speed, difference_angle * 0.15)) #max limit on rotation speed
-            rospy.loginfo("Publishing difference angle")
+            speed = max(-max_speed, min(max_speed, difference_angle * gain)) #max limit on rotation speed
+            if abs(speed) < min_speed:
+                speed = min_speed * (1 if speed > 0 else -1)                 #min limit on rotation speed
+
+            # rospy.loginfo("Publishing difference angle")
+            self.cmd_msg.angular.z = speed
             self.cmd_pub.publish(self.cmd_msg)
             difference_angle = self.normalize_angle(target_yaw - self.current_robot_yaw)
             
@@ -59,6 +63,8 @@ class Service_to_Rotate:
         rospy.loginfo("Final yaw: %.2f", self.current_robot_yaw)
         
         self.cmd_pub.publish(self.cmd_msg)
+        rospy.sleep(0.5) # time for robot to settle to stop 
+        rospy.loginfo("Service Completed")
         return RotateResponse(result="Success")
 
     def normalize_angle(self, x):
